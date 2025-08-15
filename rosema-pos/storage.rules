@@ -1,0 +1,78 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firebase Storage para el sistema POS Rosema
+// Solo usuarios autenticados pueden subir y acceder a archivos
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Función para verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Función para verificar si el archivo es una imagen válida
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*') &&
+             request.resource.size < 5 * 1024 * 1024; // 5MB máximo
+    }
+    
+    // Función para verificar si el archivo es un PDF válido
+    function isValidPDF() {
+      return request.resource.contentType == 'application/pdf' &&
+             request.resource.size < 10 * 1024 * 1024; // 10MB máximo
+    }
+    
+    // Reglas para imágenes de productos
+    match /products/{allPaths=**} {
+      // Permitir lectura a usuarios autenticados
+      allow read: if isAuthenticated();
+      
+      // Permitir escritura solo si es una imagen válida y el usuario está autenticado
+      allow write: if isAuthenticated() && isValidImage();
+      
+      // Permitir eliminación a usuarios autenticados
+      allow delete: if isAuthenticated();
+    }
+    
+    // Reglas para facturas ARCA (PDFs e imágenes)
+    match /invoices/{allPaths=**} {
+      // Permitir lectura a usuarios autenticados
+      allow read: if isAuthenticated();
+      
+      // Permitir escritura solo si es un PDF o imagen válida y el usuario está autenticado
+      allow write: if isAuthenticated() && (isValidPDF() || isValidImage());
+      
+      // Permitir eliminación a usuarios autenticados
+      allow delete: if isAuthenticated();
+    }
+    
+    // Reglas para avatares de usuarios (si se implementa)
+    match /avatars/{userId}/{allPaths=**} {
+      // Permitir lectura a usuarios autenticados
+      allow read: if isAuthenticated();
+      
+      // Permitir escritura solo al propio usuario y si es una imagen válida
+      allow write: if isAuthenticated() && 
+                      request.auth.uid == userId && 
+                      isValidImage();
+      
+      // Permitir eliminación solo al propio usuario
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Reglas para archivos temporales o de respaldo
+    match /temp/{allPaths=**} {
+      // Permitir lectura y escritura a usuarios autenticados por tiempo limitado
+      allow read, write: if isAuthenticated() && 
+                            request.time < timestamp.date(2025, 12, 31); // Fecha de expiración
+      
+      // Permitir eliminación a usuarios autenticados
+      allow delete: if isAuthenticated();
+    }
+    
+    // Reglas por defecto - denegar acceso a cualquier otro archivo
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

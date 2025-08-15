@@ -1,0 +1,115 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para el sistema POS Rosema
+// Solo usuarios autenticados pueden acceder a los datos
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función para verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Función para verificar si el usuario es administrador
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
+    }
+    
+    // Función para verificar si el usuario está activo
+    function isActiveUser() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+    
+    // Reglas para la colección de usuarios
+    match /users/{userId} {
+      // Solo administradores pueden crear usuarios
+      allow create: if isAdmin();
+      
+      // Los usuarios pueden leer su propio perfil, los administradores pueden leer todos
+      allow read: if isActiveUser() && (request.auth.uid == userId || isAdmin());
+      
+      // Los usuarios pueden actualizar su propio perfil, los administradores pueden actualizar todos
+      allow update: if isActiveUser() && (request.auth.uid == userId || isAdmin());
+      
+      // Solo administradores pueden eliminar usuarios
+      allow delete: if isAdmin();
+    }
+    
+    // Reglas para la colección de productos
+    match /products/{productId} {
+      // Usuarios autenticados y activos pueden leer productos
+      allow read: if isActiveUser();
+      
+      // Solo administradores pueden crear, actualizar y eliminar productos
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Reglas para la colección de ventas
+    match /sales/{saleId} {
+      // Usuarios autenticados y activos pueden leer ventas
+      allow read: if isActiveUser();
+      
+      // Usuarios autenticados y activos pueden crear ventas
+      allow create: if isActiveUser() && 
+                       request.auth.uid == resource.data.sellerId;
+      
+      // Solo administradores pueden actualizar y eliminar ventas
+      allow update, delete: if isAdmin();
+    }
+    
+    // Reglas para la colección de proveedores
+    match /suppliers/{supplierId} {
+      // Usuarios autenticados y activos pueden leer proveedores
+      allow read: if isActiveUser();
+      
+      // Solo administradores pueden crear, actualizar y eliminar proveedores
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Reglas para la colección de facturas
+    match /invoices/{invoiceId} {
+      // Usuarios autenticados y activos pueden leer facturas
+      allow read: if isActiveUser();
+      
+      // Solo administradores pueden crear, actualizar y eliminar facturas
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Reglas para la colección de clientes (si se implementa)
+    match /customers/{customerId} {
+      // Usuarios autenticados y activos pueden leer y crear clientes
+      allow read, create: if isActiveUser();
+      
+      // Solo administradores pueden actualizar y eliminar clientes
+      allow update, delete: if isAdmin();
+    }
+    
+    // Reglas para la colección de categorías (si se implementa)
+    match /categories/{categoryId} {
+      // Usuarios autenticados y activos pueden leer categorías
+      allow read: if isActiveUser();
+      
+      // Solo administradores pueden crear, actualizar y eliminar categorías
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Reglas para la colección de configuraciones del sistema
+    match /settings/{settingId} {
+      // Usuarios autenticados y activos pueden leer configuraciones
+      allow read: if isActiveUser();
+      
+      // Solo administradores pueden crear, actualizar y eliminar configuraciones
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Reglas para cualquier otra colección no especificada
+    match /{document=**} {
+      // Por defecto, denegar acceso a cualquier documento no especificado
+      allow read, write: if false;
+    }
+  }
+}
